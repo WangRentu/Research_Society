@@ -1,0 +1,15 @@
+# @package _global_
+defaults:
+  - override /interpreter: python
+  - override /solver: airsbench/greedy
+  - override /task: airsbench/textual_classification_sick_accuracy
+  - override /solver/client@solver.operators.analyze.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.debug.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.draft.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.improve.llm.client: litellm_qwen_35_397b_a17b
+
+metadata:
+  git_issue_id: airsbench_textual_classification_sick
+
+solver:
+  step_limit: 100

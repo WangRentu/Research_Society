@@ -1,0 +1,15 @@
+.claude/
+.vscode/
+
+# secrets (create separately on server)
+upstream/aira-dojo/.env
+.env
+
+# large raw datasets (assume server-side storage)
+upstream/airs-bench/datasets/airs_raw_datasets/
+upstream/airs-bench/datasets/datasets_download_location/
+
+# python caches
+**/__pycache__/
+**/.pytest_cache/
+

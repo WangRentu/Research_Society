@@ -1,0 +1,15 @@
+# @package _global_
+defaults:
+  - override /interpreter: jupyter
+  - override /solver: airsbench/greedy
+  - override /benchmark: airsbench/lite
+  - override /solver/client@solver.operators.analyze.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.debug.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.draft.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.improve.llm.client: litellm_qwen_35_397b_a17b
+
+metadata:
+  git_issue_id: AIRSBENCH_AIRA_GREEDY_QWEN
+
+vars:
+  metadata.seed: [1,2,3,4,5,6,7,8,9,10]

@@ -1,0 +1,5 @@
+_target_: dojo.config_dataclasses.benchmark.BenchmarkConfig
+
+name: airsbench
+tasks:
+  - TextualClassificationSickAccuracy

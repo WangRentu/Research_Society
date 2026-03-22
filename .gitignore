@@ -1,151 +1,147 @@
-# hydra output stuff
-outputs/
-results/
+# ==========================
+# research_society (root)
+# Keep code + configs. Ignore secrets, environments, data, and run artifacts.
+# ==========================
 
-# Editors
-.vscode/
-.idea/
+# --- Secrets / environment files ---
+.env
+.env.*
+.envrc
 
-# Claude Code
-.claude/
-CLAUDE.md
+# common key/cert files
+*.pem
+*.key
+*.p12
+*.pfx
 
-# Vagrant
-.vagrant/
-
-# Mac/OSX
-.DS_Store
-
-# Windows
-Thumbs.db
-
-# Source for the following rules: https://raw.githubusercontent.com/github/gitignore/master/Python.gitignore
-# Byte-compiled / optimized / DLL files
+# --- Python bytecode / caches ---
 __pycache__/
 *.py[cod]
 *$py.class
 
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
 .coverage
 .coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
+htmlcov/
 
-# Translations
-*.mo
-*.pot
+# --- Python packaging ---
+build/
+dist/
+*.egg-info/
+.eggs/
 
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-.python-version
-
-# celery beat schedule file
-celerybeat-schedule
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.venv
-env/
+# --- Virtual envs (local) ---
+.venv/
 venv/
 ENV/
-env.bak/
+env/
+.env.bak/
 venv.bak/
 
-# Spyder project settings
-.spyderproject
-.spyproject
+# --- Jupyter ---
+.ipynb_checkpoints/
 
-# Rope project settings
-.ropeproject
+# --- Editors / OS ---
+.vscode/
+.idea/
+.cursor/
+.claude/
+.cursorignore
+.cursorindexingignore
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
 
-# mkdocs documentation
-/site
+# --- Claude Code local state ---
+.claude/
 
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+# --- Hydra / experiment outputs (anywhere) ---
+**/outputs/
+**/multirun/
+**/.hydra/
+**/*hydra_logs*/
 
-# Model checkpoints and training artifacts
-model_checkpoint/
-model_checkpoint
-training_summary_*.json
-evaluation_results.json
-test_submission.json
+# --- Run artifacts / logs (anywhere) ---
+**/logs/
+**/*.log
+**/wandb/
 
-# datasets testing
-datasets/hf_datasets_sample.csv
-datasets/datasets_download_location/
-datasets/datasets_download_location_prepared/
+# --- Workspaces / scratch dirs ---
+**/workspace/
+**/workspaces/
+**/_scratch*
 
-# tasks testing 
-airsbench/tasks/rad/*/*.csv
+# --- Common caches / downloaded artifacts ---
+**/.cache/
+**/cache/
+**/tmp/
 
-# notebooks output
-notebooks/*.pdf
+# --- Apptainer / docker artifacts ---
+*.sif
+*.img
+*.sqsh
+
+# --- ML checkpoints / large artifacts (avoid committing models) ---
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+
+# --- Common dataset formats (avoid committing raw data) ---
+*.parquet
+*.arrow
+*.feather
+*.h5
+*.hdf5
+*.npy
+*.npz
+
+# --- Dojo / MLEBench specific ---
+# Ignore all competition folders under data/mlebench, but keep utils and _splits
+**/data/mlebench/*/
+!**/data/mlebench/utils/
+!**/data/mlebench/utils/**
+!**/data/mlebench/_splits/
+!**/data/mlebench/_splits/**
+
+# Ignore embedded mle-bench source checkout (large vendored repo)
+**/src/dojo/tasks/mlebench/mle-bench/
+
+# --- AIRS-Bench repo testing artifacts ---
+# Prevent accidentally committing task CSVs that may be generated during tests
+**/airsbench/tasks/rad/*/*.csv
+
+# --- Airs-bench datasets (all downloaded data, keep code only) ---
+forks/airs-bench/datasets/
+**/datasets/datasets_download_location/
+**/datasets/datasets_download_location_prepared/
+**/datasets/hf_datasets_sample.csv
+
+# --- MLGym artifacts ---
+models/
+trajectories/*
+!trajectories/mlgym_bench_v0/
+trajectories/**/*.log
+trajectories/**/*.pdf
+trajectories/**/args.yaml
+
+# --- Do not commit generated submissions ---
+submission.csv
+**/submission.csv
+
+
+# --- aira-dojo / aira-dojo-baseline large runtime artifacts ---
+forks/aira-dojo/shared/
+forks/aira-dojo/logs_*/
+forks/aira-dojo-baseline/shared/
+forks/aira-dojo-baseline/logs_baseline_*/
+forks/aira-dojo-baseline/launch_log*.txt
+forks/aira-dojo/launch_log*.txt
+
+# --- upstream (external, not tracked) ---
+upstream/**

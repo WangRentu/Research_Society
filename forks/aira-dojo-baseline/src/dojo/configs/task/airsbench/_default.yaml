@@ -1,0 +1,14 @@
+# @package task
+
+_target_: dojo.config_dataclasses.task.airsbench.AIRSBenchTaskConfig
+name: ???
+benchmark: airsbench
+
+tasks_root_dir: ${oc.env:AIRS_BENCH_TASKS_DIR}
+global_shared_data_dir: ${oc.env:AIRS_BENCH_DATA_DIR}
+task_dir: ${task.tasks_root_dir}/${task.name}
+
+prepared_data_dir: ${hydra:runtime.output_dir}/task_data/public
+evaluation_data_dir: ${hydra:runtime.output_dir}/task_data/eval
+results_output_dir: ${hydra:runtime.output_dir}/results
+submission_fname: submission.csv

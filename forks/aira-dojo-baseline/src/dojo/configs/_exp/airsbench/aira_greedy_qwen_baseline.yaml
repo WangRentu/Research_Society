@@ -1,0 +1,24 @@
+# @package _global_
+# Baseline experiment config aligned with AIRS-Bench paper settings:
+# - Greedy (AIDE) scaffold
+# - Qwen 3.5-397B model
+# - 24h time limit per run
+# - 4h per solution execution
+# - 10 seeds per task
+
+defaults:
+  - override /interpreter: python
+  - override /solver: airsbench/greedy
+  - override /task: airsbench/textual_classification_sick_accuracy
+  - override /solver/client@solver.operators.analyze.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.debug.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.draft.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.improve.llm.client: litellm_qwen_35_397b_a17b
+
+metadata:
+  git_issue_id: baseline
+
+solver:
+  step_limit: 200
+  time_limit_secs: 86400        # 24 hours per run (paper setting)
+  execution_timeout: 14400      # 4 hours per solution execution (paper setting)
