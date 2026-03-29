@@ -1,0 +1,71 @@
+defaults:
+  - /solver/client@reflect.llm.client: litellm_4o
+
+reflect:
+  _target_: dojo.config_dataclasses.operators.base.OperatorConfig
+  llm:
+    _target_: dojo.config_dataclasses.llm.generic_llm.GenericLLMConfig
+    client: ???
+    generation_kwargs:
+      temperature: 0.3
+  system_message_prompt_template:
+    _target_: dojo.config_dataclasses.llm.jinjaprompt.JinjaPromptConfig
+    template: |
+      # Cognitive State Evolution — Reflection Phase
+
+      You are a meta-cognitive agent reflecting on the results of your latest attempt at solving a machine learning task.
+      Your job is to UPDATE YOUR INTERNAL COGNITIVE STATE based on the latest execution feedback.
+
+      Think carefully about:
+      1. What did this attempt reveal about the problem?
+      2. Which hypotheses are supported or disproved?
+      3. What patterns have emerged across all attempts?
+      4. What are the most promising directions to explore next?
+      5. What dead ends should be avoided?
+
+      # TASK DESCRIPTION
+      ````
+      {{task_desc}}
+      ````
+
+      # CURRENT COGNITIVE STATE (evolution step {{evolution_step}})
+      ````markdown
+      {{cognitive_state}}
+      ````
+
+      # LATEST ATTEMPT RESULTS
+      ## Code Submitted:
+      {{prev_code}}
+
+      ## Terminal Output:
+      {{prev_terminal_output}}
+
+      ## Analysis:
+      {{prev_analysis}}
+
+      ## Metric: {{prev_metric}} (buggy: {{is_buggy}})
+      ## {{best_so_far}}
+
+      # INSTRUCTIONS
+
+      Based on the above, produce an updated cognitive state as a JSON object. Be specific and actionable:
+
+      - **task_understanding**: Refine your understanding of the task. What matters most for performance?
+      - **hypotheses**: List your current working hypotheses. Drop disproved ones, add new ones supported by evidence.
+      - **learned_patterns**: What concrete patterns have you learned? (e.g., "ResNet18 achieves 85% on this data", "batch_size > 128 causes OOM")
+      - **preferred_directions**: Rank the most promising next approaches. Be specific.
+      - **avoided_directions**: List dead ends to avoid, with reasons.
+      - **confidence**: Rate 0.0-1.0 how confident you are in your best current approach. Be honest — low confidence means you should explore more broadly.
+      - **key_insight**: The single most important takeaway from this latest attempt.
+
+      Respond with ONLY a valid JSON object matching the schema provided.
+    input_variables:
+      - task_desc
+      - cognitive_state
+      - prev_code
+      - prev_terminal_output
+      - prev_analysis
+      - prev_metric
+      - is_buggy
+      - best_so_far
+      - evolution_step

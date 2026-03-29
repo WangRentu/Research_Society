@@ -1,0 +1,123 @@
+# Cogito MC-ESES Superimage Requirements
+# Cleaned: removed duplicates, pinned versions relaxed for compatibility
+
+# === Core ML ===
+torch
+torchvision
+torch-geometric
+torchmetrics
+pytorch-lightning
+accelerate
+peft
+timm
+scikit-learn
+scikit-image
+scipy
+numpy
+pandas
+
+# === NLP ===
+transformers
+sentence_transformers
+sentencepiece
+tokenizers
+nltk
+textblob
+contractions
+
+# === Gradient Boosting ===
+lightgbm
+xgboost
+catboost
+
+# === Data & IO ===
+datasets
+pyarrow
+h5py
+xlrd
+jsonlines
+imagecodecs
+
+# === Optimization & Search ===
+bayesian-optimization
+hyperopt
+optuna
+scikit-optimize
+
+# === Evaluation ===
+evaluate
+rouge_score
+rank_bm25
+
+# === Visualization ===
+matplotlib
+seaborn
+plotly
+
+# === Time Series ===
+sktime
+statsmodels
+
+# === Graph / Network ===
+igraph>=0.11.3
+node2vec
+
+# === Computer Vision ===
+Pillow
+opencv-python
+kornia
+
+# === Utilities ===
+rich
+tqdm
+humanize
+requests
+python-dotenv
+PyYAML
+omegaconf>=2.3.0
+hydra-core==1.3.2
+hydra-colorlog==1.2.0
+black
+pytest
+
+# === LLM & API ===
+litellm
+openai>=1.3.5
+anthropic>=0.20.0
+tiktoken
+
+# === Experiment Tracking ===
+wandb
+coolname>=2.2.0
+
+# === Jupyter ===
+ipykernel
+ipython
+nbformat
+
+# === Other ML ===
+imbalanced-learn
+sklearn-pandas
+umap-learn
+numba
+shap
+scikeras
+fastai
+gensim
+hmmlearn
+onnxruntime
+
+# === Config & Serialization ===
+dataclasses-json>=0.6.4
+genson>=1.2.0
+jsonschema
+arrow
+shutup
+tenacity
+
+# === Audio (optional) ===
+librosa
+
+# === Misc ===
+streamlit
+sympy

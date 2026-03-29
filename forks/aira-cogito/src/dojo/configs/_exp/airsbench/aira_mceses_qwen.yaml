@@ -1,0 +1,18 @@
+# @package _global_
+defaults:
+  - override /interpreter: python
+  - override /solver: airsbench/mceses
+  - override /task: airsbench/_default
+  - override /solver/client@solver.operators.analyze.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.debug.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.draft.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.improve.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.reflect.llm.client: litellm_qwen_35_397b_a17b
+
+metadata:
+  git_issue_id: AIRSBENCH_AIRA_MCESES_QWEN
+
+solver:
+  step_limit: 200
+  time_limit_secs: 86400
+  execution_timeout: 14400

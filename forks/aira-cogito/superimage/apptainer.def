@@ -1,0 +1,108 @@
+# Cogito MC-ESES Superimage for AIRS-Bench
+# CUDA 13.0 + PyTorch 2.10 + ML packages
+# Adapted for local workstation (no SLURM, no SSH)
+
+Bootstrap: docker
+From: nvidia/cuda:13.0.0-base-ubuntu22.04
+
+%labels
+    Maintainer "Cogito Research Team"
+    Description "Superimage for AIRS-Bench evaluation with Cogito MC-ESES"
+
+%environment
+    export HOME=/root
+    export CONDAHOME=/opt/conda
+    export PATH=$CONDAHOME/bin:$PATH
+    export TQDM_DISABLE=1
+    export PYTHONWARNINGS="ignore"
+
+%files
+    entrypoint.sh /opt/entrypoint.sh
+    pip.requirements.txt /opt/pip.requirements.txt
+
+%post
+    set -ex
+
+    # Use mirror if HF_ENDPOINT is set during build, otherwise direct
+    # Proxy settings (uncomment if behind proxy)
+    # export http_proxy=http://127.0.0.1:9999
+    # export https_proxy=http://127.0.0.1:9999
+
+    # Install system packages
+    for i in 1 2 3; do
+        apt-get update && break
+        echo "apt-get update attempt $i failed, retrying..."
+        sleep 5
+    done
+    for i in 1 2 3; do
+        apt-get install -y --fix-missing \
+            wget curl vim git \
+            build-essential \
+            openssl \
+            libssl-dev \
+            ca-certificates \
+            --no-install-recommends && break
+        echo "apt-get install attempt $i failed, retrying..."
+        sleep 3
+    done
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+    echo "System packages installed"
+
+    which wget || (echo "FATAL: wget not installed" && exit 1)
+
+    export HOME=/root
+    export CONDAHOME=/opt/conda
+
+    # Install Miniforge (conda/mamba)
+    wget -P /tmp "https://github.com/conda-forge/miniforge/releases/download/25.1.1-0/Miniforge3-25.1.1-0-Linux-x86_64.sh" && \
+    bash /tmp/Miniforge3-25.1.1-0-Linux-x86_64.sh -b -p "$CONDAHOME" && \
+    rm /tmp/Miniforge3-25.1.1-0-Linux-x86_64.sh
+    export PATH="$CONDAHOME/bin:$PATH"
+
+    # PyTorch + CUDA
+    mamba install -q -c pytorch -c nvidia -y \
+        pytorch \
+        pytorch-cuda=12.4 \
+        cuda-toolkit=12.4
+
+    mamba install -y xorg-libx11
+
+    # Core Python packages
+    pip install -U pip && \
+    pip install \
+        jupyter \
+        ipython \
+        jupyterlab \
+        matplotlib \
+        pandas \
+        scikit-learn \
+        seaborn \
+        transformers \
+        jupyter-kernel-gateway
+
+    # Full ML stack from requirements
+    pip install -r /opt/pip.requirements.txt
+
+    # Additional packages needed for AIRS-Bench (from run logs)
+    pip install \
+        xgboost \
+        torchmetrics \
+        sktime \
+        evaluate \
+        rank_bm25 \
+        rouge_score \
+        faiss-cpu
+
+    # Create standard directories
+    mkdir -p /inputs
+    mkdir -p /outputs
+    mkdir -p /root/.ssh
+
+    chmod +x /opt/entrypoint.sh
+
+%startscript
+    exec jupyter kernelgateway \
+        --KernelGatewayApp.ip="$KG_IP" \
+        --KernelGatewayApp.port=0 \
+        --KernelGatewayApp.api='kernel_gateway.notebook_http' \
+        --KernelGatewayApp.seed_uri='/dev/null'

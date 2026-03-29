@@ -1,0 +1,6 @@
+_target_: dojo.config_dataclasses.client.base.ClientConfig
+api: litellm
+model_id: "qwen3.5-397b-a17b"
+base_url: ${oc.env:HOST_O1_PREVIEW}
+use_azure_client: False
+provider: selfhosted

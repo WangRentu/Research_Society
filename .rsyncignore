@@ -2,7 +2,7 @@
 .vscode/
 
 # secrets (create separately on server)
-upstream/aira-dojo/.env
+upstream/aira-cogito/.env
 .env
 
 # large raw datasets (assume server-side storage)

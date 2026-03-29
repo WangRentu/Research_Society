@@ -1,0 +1,25 @@
+defaults:
+  - mceses
+  - /solver/operators/airsbench@operators:
+    - mceses_operators/debug
+    - mceses_operators/draft
+    - mceses_operators/improve
+    - aide_operators/analyze
+    - mceses_operators/reflect
+  - override memory: simple_memory
+  - override memory@debug_memory: debug_memory
+
+# --- Search Configuration ---
+improvement_steps: 5
+
+data_preview: true
+
+# --- Debugging Configuration ---
+max_debug_depth: 20
+
+debug_prob: 1.0
+
+# --- Drafting Configuration ---
+num_drafts: 5
+
+max_llm_call_retries: 3

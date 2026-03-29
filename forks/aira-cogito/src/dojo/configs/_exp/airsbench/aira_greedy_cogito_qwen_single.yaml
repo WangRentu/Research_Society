@@ -1,0 +1,28 @@
+# @package _global_
+# Greedy + CognitiveState: same 5-draft search structure, with z_t evolution
+# Uses mceses_operators (with {{cognitive_state}} in prompts) + reflect operator
+#
+# Usage:
+#   Greedy + z_t (condition B):
+#     solver.use_cognitive_state=true solver.intervention_mode=natural
+#   Greedy without z_t (condition A, baseline):
+#     solver.use_cognitive_state=false
+#   Greedy + ablated z_t (Exp 3):
+#     solver.use_cognitive_state=true solver.intervention_mode=ablated
+defaults:
+  - override /interpreter: python
+  - override /solver: airsbench/greedy_cogito
+  - override /task: airsbench/_default
+  - override /solver/client@solver.operators.analyze.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.debug.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.draft.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.improve.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.reflect.llm.client: litellm_qwen_35_397b_a17b
+
+metadata:
+  git_issue_id: AIRSBENCH_GREEDY_COGITO
+
+solver:
+  step_limit: 50
+  time_limit_secs: 43200
+  execution_timeout: 14400

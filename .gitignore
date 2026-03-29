@@ -135,13 +135,30 @@ submission.csv
 **/submission.csv
 
 
-# --- aira-dojo / aira-dojo-baseline large runtime artifacts ---
-forks/aira-dojo/shared/
-forks/aira-dojo/logs_*/
+# --- aira-cogito / aira-dojo-baseline large runtime artifacts ---
+forks/aira-cogito/shared/
+forks/aira-cogito/logs_*/
+forks/aira-cogito/log/
 forks/aira-dojo-baseline/shared/
 forks/aira-dojo-baseline/logs_baseline_*/
 forks/aira-dojo-baseline/launch_log*.txt
-forks/aira-dojo/launch_log*.txt
+forks/aira-cogito/launch_log*.txt
+
+# --- Experiment raw outputs (keep only summary CSVs) ---
+experiments/exp_a/abl/
+experiments/exp_a/nat*/
+experiments/exp_a/baseline/
+
+# --- docs: ignore drafts, images, PDFs, claude chat logs ---
+docs/chat/
+docs/idea/image*.png
+docs/paper/draft/image*.png
+docs/paper/DLE-Agent/main.pdf
+docs/paper/DLE-Agent/fig1_framework.drawio
+docs/paper/Template-2026/colm2026_conference.pdf
+docs/paper/airs-bench.pdf
+docs/reference/image*.png
+docs/plan/*.html
 
 # --- upstream (external, not tracked) ---
 upstream/**

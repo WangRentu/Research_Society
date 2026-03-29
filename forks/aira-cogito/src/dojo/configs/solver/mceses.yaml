@@ -1,0 +1,71 @@
+defaults:
+  - memory: simple_memory  # Enables Memory operator
+  - memory@debug_memory: debug_memory # Enables Debug Memory operator
+
+_target_: dojo.config_dataclasses.solver.mceses.MCESESSolverConfig
+
+# --- Output Configuration ---
+export_search_results: true
+
+# --- Search Configuration ---
+improvement_steps: 5
+step_limit: 500
+data_preview: false
+execution_timeout: 14400
+time_limit_secs: 86400
+
+# --- Debugging Configuration ---
+max_debug_depth: ???
+debug_prob: ???
+
+# --- Drafting Configuration ---
+num_drafts: ???
+max_llm_call_retries: 3
+
+use_test_score: false
+use_complexity: false
+
+# --- MC-ESES-specific ---
+reflect_after_every_step: true
+max_state_history: 50
+
+# --- MC-ESES tree search over cognitive state space ---
+# num_children=1 → linear evolution (old Phase A)
+# num_children>1 → branching tree search (full MC-ESES)
+use_tree_search: true
+uct_c: 0.25
+num_children: 1
+max_cs_tree_depth: 10
+max_debug_time: 600
+
+# --- Phase B: strategy-driven action selection ---
+strategy_driven: true
+
+# --- Phase B: expansion diversity ---
+diverse_expansion: true
+
+# --- Phase B: multi-dimensional backpropagation ---
+backprop_metric_weight: 0.6
+backprop_validity_weight: 0.2
+backprop_improvement_weight: 0.2
+
+# --- Phase B: intrinsic quality in UCT ---
+intrinsic_quality_weight: 0.2
+
+# --- Phase B: cross-branch knowledge transfer ---
+crossover_enabled: true
+crossover_top_k: 3
+
+# --- Environment Configuration ---
+available_packages:
+  - numpy
+  - pandas
+  - scikit-learn
+  - statsmodels
+  - xgboost
+  - lightgbm
+  - torch
+  - torchvision
+  - torch-geometric
+  - bayesian-optimization
+  - timm

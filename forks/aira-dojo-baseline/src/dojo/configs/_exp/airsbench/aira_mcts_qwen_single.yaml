@@ -1,0 +1,13 @@
+# @package _global_
+# MCTS single-task config for scripted runs
+defaults:
+  - override /interpreter: python
+  - override /solver: airsbench/mcts
+  - override /task: airsbench/_default
+  - override /solver/client@solver.operators.analyze.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.debug.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.draft.llm.client: litellm_qwen_35_397b_a17b
+  - override /solver/client@solver.operators.improve.llm.client: litellm_qwen_35_397b_a17b
+
+metadata:
+  git_issue_id: AIRSBENCH_AIRA_MCTS_QWEN
