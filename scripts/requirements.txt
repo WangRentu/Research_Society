@@ -350,4 +350,4 @@ Werkzeug==3.1.6
 wheel==0.46.3
 wrapt==2.1.2
 xxhash==3.6.0
-zipp==23.0.0
+zipp==3.23.0
