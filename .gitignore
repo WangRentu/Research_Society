@@ -162,3 +162,6 @@ docs/plan/*.html
 
 # --- upstream (external, not tracked) ---
 upstream/**
+
+docs/
+experiments/
