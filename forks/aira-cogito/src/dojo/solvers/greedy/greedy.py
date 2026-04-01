@@ -402,33 +402,70 @@ class Greedy(Solver):
         # 2. Snapshot z_before
         z_before = self.cognitive_state.clone()
 
-        # 3. U(z_t, r_t) → z_{t+1}
-        # Skip the LLM reflect call for ablated mode (result is discarded anyway)
+        # 3. Determine whether to do full LLM reflect or lightweight update
         if self.cfg.intervention_mode == "ablated":
+            # Ablated: skip reflect entirely, return blank state
             blank = CognitiveState()
             blank.environment_context = self.cognitive_state.environment_context
             updated_state = blank
             code_node.operators_used.append("reflect_skipped")
             code_node.operators_metrics.append({})
+            trigger = "ablated"
+        elif self.cfg.managed_evolution:
+            # NAT+: triggered reflection
+            if feedback is None:
+                # Defensive: if feedback construction failed, fall back to full reflect
+                updated_state, reflect_metrics = self.reflect_fn(
+                    self.task_desc, self.cognitive_state, code_node, self.journal,
+                )
+                code_node.operators_used.append("reflect")
+                code_node.operators_metrics.append(reflect_metrics)
+                trigger = "fallback"
+                self.cognitive_state = self._apply_intervention(updated_state, self.state.current_step)
+                self.logger.warning("NAT+ fallback: feedback is None, did full reflect")
+                return
+
+            should_reflect, trigger = self._should_reflect(self.cognitive_state, feedback)
+            if should_reflect:
+                updated_state, reflect_metrics = self.reflect_fn(
+                    self.task_desc, self.cognitive_state, code_node, self.journal,
+                )
+                code_node.operators_used.append("reflect")
+                code_node.operators_metrics.append(reflect_metrics)
+            else:
+                updated_state = self._lightweight_state_update(
+                    self.cognitive_state, code_node, feedback, trigger,
+                )
+                code_node.operators_used.append("reflect_lightweight")
+                code_node.operators_metrics.append({})
+
+            # Apply managed decay
+            updated_state = self._apply_managed_decay(
+                z_before, updated_state, feedback, trigger,
+            )
+
+            # Apply causal intervention
+            updated_state = self._apply_intervention(
+                updated_state, self.state.current_step,
+            )
         else:
+            # NAT (original): always reflect
             updated_state, reflect_metrics = self.reflect_fn(
-                self.task_desc,
-                self.cognitive_state,
-                code_node,
-                self.journal,
+                self.task_desc, self.cognitive_state, code_node, self.journal,
             )
             code_node.operators_used.append("reflect")
             code_node.operators_metrics.append(reflect_metrics)
+            trigger = "always"
 
-            # 4. Apply causal intervention (for other modes: natural, scrambled, frozen)
+            # Apply causal intervention
             updated_state = self._apply_intervention(
-                updated_state, self.state.current_step
+                updated_state, self.state.current_step,
             )
 
-        # 5. Update cognitive state
+        # 4. Update cognitive state
         self.cognitive_state = updated_state
 
-        # 6. Record trajectory snapshot
+        # 5. Record trajectory snapshot
         if feedback is not None:
             self._record_step(
                 step=self.state.current_step,
@@ -440,11 +477,166 @@ class Greedy(Solver):
             )
 
         self.logger.info(
-            f"Reflect: z_t[{updated_state.evolution_step}] "
+            f"Reflect[{trigger}]: z_t[{updated_state.evolution_step}] "
             f"confidence={updated_state.confidence:.2f}, "
             f"hypotheses={len(updated_state.hypotheses)}, "
             f"patterns={len(updated_state.learned_patterns)}"
         )
+
+    # ------------------------------------------------------------------
+    # Managed evolution helpers (NAT+)
+    # ------------------------------------------------------------------
+
+    def _recent_bug_streak(self, z_t: CognitiveState, current_feedback: Optional[Feedback] = None) -> int:
+        """Count consecutive buggy attempts for the current branch."""
+        streak = 0
+        if current_feedback is not None:
+            if not current_feedback.is_buggy:
+                return 0
+            streak += 1
+        for attempt in reversed(z_t.attempt_summaries):
+            if attempt.is_buggy:
+                streak += 1
+            else:
+                break
+        return streak
+
+    def _recent_valid_metrics(self, z_t: CognitiveState) -> List[float]:
+        """Return valid historical metrics for the current branch."""
+        return [
+            attempt.metric
+            for attempt in z_t.attempt_summaries
+            if not attempt.is_buggy and attempt.metric is not None
+        ]
+
+    def _is_plateau(self, z_t: CognitiveState, current_metric: Optional[float]) -> bool:
+        """Detect whether the branch has plateaued over the recent valid attempts."""
+        if current_metric is None:
+            return False
+        metrics = self._recent_valid_metrics(z_t)
+        metrics.append(current_metric)
+        window = metrics[-self.cfg.plateau_window:]
+        if len(window) < self.cfg.plateau_window:
+            return False
+        best_so_far = window[0]
+        for metric in window[1:]:
+            if self.lower_is_better:
+                if metric < best_so_far:
+                    return False
+            else:
+                if metric > best_so_far:
+                    return False
+        return True
+
+    def _get_reflection_trigger(self, z_t: CognitiveState, feedback: Feedback) -> str:
+        """Classify whether the current step contains enough new information to reflect."""
+        if z_t.evolution_step == 0 or not z_t.attempt_summaries:
+            return "bootstrap"
+
+        previous_metrics = self._recent_valid_metrics(z_t)
+        if not feedback.is_buggy and not previous_metrics:
+            return "first_success"
+
+        if feedback.is_buggy and feedback.error_category and feedback.error_category != "none":
+            if feedback.error_category not in self._prev_error_categories:
+                return "new_error"
+
+        if feedback.metric is not None and previous_metrics:
+            prev_metric = previous_metrics[-1]
+            denom = max(abs(prev_metric), 1e-8)
+            rel_change = abs(feedback.metric - prev_metric) / denom
+            if rel_change > self.cfg.score_jump_threshold:
+                return "score_jump"
+
+        if self._recent_bug_streak(z_t, feedback) >= self.cfg.bug_streak_window:
+            return "bug_streak"
+
+        if self._is_plateau(z_t, feedback.metric):
+            return "plateau"
+
+        return "routine"
+
+    def _should_reflect(self, z_t: CognitiveState, feedback: Feedback):
+        """Decide whether to spend an LLM call on reflect_op."""
+        if not self.cfg.triggered_reflection:
+            return self.cfg.reflect_after_every_step, "always"
+        trigger = self._get_reflection_trigger(z_t, feedback)
+        if trigger != "routine":
+            return True, trigger
+        return self.cfg.reflect_on_routine, trigger
+
+    @staticmethod
+    def _clamp_confidence(value: float) -> float:
+        return max(0.0, min(1.0, value))
+
+    def _lightweight_state_update(
+        self,
+        z_t: CognitiveState,
+        code_node: Node,
+        feedback: Feedback,
+        trigger: str,
+    ) -> CognitiveState:
+        """Advance state without an LLM call when the step contains little new information."""
+        updated = z_t.clone()
+        updated.evolution_step += 1
+
+        if feedback.is_buggy:
+            updated.confidence = self._clamp_confidence(updated.confidence - 0.05)
+            if feedback.error_pattern and feedback.error_pattern not in updated.learned_patterns:
+                updated.learned_patterns.append(feedback.error_pattern)
+            insight = feedback.error_pattern or f"buggy step ({feedback.error_category or 'unknown error'})"
+        else:
+            if feedback.trend == "improving":
+                updated.confidence = self._clamp_confidence(updated.confidence + 0.05)
+            elif feedback.trend == "degrading":
+                updated.confidence = self._clamp_confidence(updated.confidence - 0.05)
+            else:
+                updated.confidence = self._clamp_confidence(updated.confidence + 0.01)
+            insight = f"{feedback.trend} metric ({trigger})"
+
+        updated.add_attempt(
+            step=z_t.evolution_step,
+            approach=code_node.plan or "(unknown)",
+            metric=feedback.metric,
+            is_buggy=feedback.is_buggy,
+            key_insight=insight,
+            max_history=self.cfg.max_state_history,
+        )
+        return updated
+
+    def _apply_managed_decay(
+        self,
+        z_before: CognitiveState,
+        z_after: CognitiveState,
+        feedback: Feedback,
+        trigger: str,
+    ) -> CognitiveState:
+        """Apply conservative decay so unhealthy branches recover faster."""
+        if not self.cfg.managed_evolution:
+            return z_after
+
+        updated = z_after.clone()
+        bug_streak = self._recent_bug_streak(z_before, feedback)
+
+        if self.cfg.hard_reset_on_bug_streak and bug_streak >= self.cfg.bug_streak_window:
+            updated.confidence = 0.1
+            updated.preferred_directions = []
+            if len(updated.hypotheses) > 2:
+                updated.hypotheses = updated.hypotheses[:2]
+            return updated
+
+        if self.cfg.state_decay_on_plateau and trigger == "plateau":
+            updated.confidence = self._clamp_confidence(
+                updated.confidence * (1.0 - self.cfg.plateau_decay_rate)
+            )
+            if updated.preferred_directions:
+                updated.preferred_directions = updated.preferred_directions[:-1]
+
+        return updated
+
+    # ------------------------------------------------------------------
+    # Causal intervention
+    # ------------------------------------------------------------------
 
     def _apply_intervention(self, z_after_reflect: CognitiveState, step: int) -> CognitiveState:
         """Apply causal intervention to z_t after reflect (Exp 3).
@@ -708,7 +900,9 @@ class Greedy(Solver):
         self.journal.append(result_node)
 
         # --- Cognitive state evolution (if enabled) ---
-        if self.cfg.use_cognitive_state and self.cfg.reflect_after_every_step:
+        # NAT: reflect_after_every_step controls whether to reflect
+        # NAT+: managed_evolution handles its own trigger logic internally
+        if self.cfg.use_cognitive_state and (self.cfg.reflect_after_every_step or self.cfg.managed_evolution):
             self._reflect_and_record(result_node)
 
         # Log the best node

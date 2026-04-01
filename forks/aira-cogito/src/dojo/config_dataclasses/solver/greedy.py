@@ -73,6 +73,53 @@ class GreedySolverConfig(SolverConfig):
         metadata={"description": "Call reflect_op after every step (vs only after score changes)."},
     )
 
+    # --- Managed evolution (NAT+) ---
+    managed_evolution: bool = field(
+        default=False,
+        metadata={
+            "description": (
+                "Enable managed evolution for Greedy (NAT+). "
+                "Adds triggered reflection, lightweight updates, and state decay."
+            ),
+        },
+    )
+    triggered_reflection: bool = field(
+        default=True,
+        metadata={"description": "Only reflect on meaningful events (new_error, score_jump, bug_streak, plateau)."},
+    )
+    reflect_on_routine: bool = field(
+        default=False,
+        metadata={"description": "Whether to LLM-reflect on routine (non-triggered) steps."},
+    )
+    plateau_window: int = field(
+        default=3,
+        metadata={"description": "Number of consecutive non-improving valid steps to detect plateau."},
+    )
+    bug_streak_window: int = field(
+        default=3,
+        metadata={"description": "Number of consecutive buggy steps to trigger hard reset."},
+    )
+    score_jump_threshold: float = field(
+        default=0.05,
+        metadata={"description": "Relative change in metric to classify as score_jump."},
+    )
+    state_decay_on_plateau: bool = field(
+        default=True,
+        metadata={"description": "Decay confidence when plateau detected."},
+    )
+    plateau_decay_rate: float = field(
+        default=0.3,
+        metadata={"description": "Multiplicative decay rate for confidence on plateau."},
+    )
+    hard_reset_on_bug_streak: bool = field(
+        default=True,
+        metadata={"description": "Hard reset confidence/hypotheses on long bug streaks."},
+    )
+    max_state_history: int = field(
+        default=50,
+        metadata={"description": "Max attempt summaries to keep in cognitive state."},
+    )
+
     # --- Experiment instrumentation ---
     save_trajectory: bool = field(
         default=False,

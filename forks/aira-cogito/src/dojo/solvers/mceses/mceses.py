@@ -206,13 +206,23 @@ class MCESES(Solver):
     def __call__(self, task, state):
         """MC-ESES entry point.
 
-        num_children=1 → linear cognitive evolution using search_policy
-            (draft/improve/debug, z_t-driven, one action per step).
-        num_children>1 → tree search over cognitive state space
-            (UCT selection, multi-child expansion, backpropagation).
+        K=1 is treated as a degenerate single-trajectory chain: the solver
+        still operates over cognitive-state nodes, but each expansion creates
+        exactly one child. K>1 yields the full branching tree-search mode.
         """
         if self.cfg.num_children <= 1:
-            return self._run_cognitive_evolution(task, state)
+            return self._run_chain_search(task, state)
+        return self._run_tree_search(task, state)
+
+    def _run_chain_search(self, task, state):
+        """Run the degenerate K=1 MC-ESES mode.
+
+        This reuses the same cognitive-state tree machinery as the branching
+        solver, but with one child per expansion. The resulting search is a
+        single trajectory over branch-local cognitive states, which keeps the
+        implementation aligned with K>1 while avoiding a separate code path.
+        """
+        self.logger.info("Starting MC-ESES chain search (degenerate K=1 mode)")
         return self._run_tree_search(task, state)
 
     # ------------------------------------------------------------------
@@ -754,8 +764,13 @@ class MCESES(Solver):
         - Multi-dimensional backpropagation (metric + validity + improvement)
         """
         leaf_cs = path[-1]
+        target_children = (
+            self._adaptive_num_children(leaf_cs.cognitive_state)
+            if self.cfg.managed_evolution
+            else self.cfg.num_children
+        )
         num_children = min(
-            self.cfg.num_children,
+            target_children,
             self.cfg.step_limit - self.state.current_step,
         )
 
@@ -789,7 +804,10 @@ class MCESES(Solver):
             # 2. Strategy-driven action selection (P0): confidence → draft vs improve
             focus_dir = focus_directions[k] if k < len(focus_directions) else None
             code_node = self._select_and_execute_action(
-                z_t, focus_dir, cross_branch_insights
+                z_t,
+                focus_dir,
+                cross_branch_insights,
+                branch_source_step=leaf_cs.source_node_step,
             )
 
             # 3. Execute
@@ -800,23 +818,45 @@ class MCESES(Solver):
 
             # 4. If buggy, try bounded debug cycle
             if code_node.is_buggy:
-                state, code_node = self._cs_debug_cycle(state, task, code_node)
+                state, code_node = self._cs_debug_cycle(state, task, code_node, z_t)
 
             # 5. Construct multi-dimensional feedback r_t
             feedback = build_feedback(code_node, self.journal, self.lower_is_better)
             if feedback is not None:
                 code_node._term_out.append(f"\n\n{feedback.to_prompt_str()}")
 
-            # 6. U(z_t, r_t): reflect to produce z_{t+1}
+            # 6. Managed state evolution: reflect only on informative events.
             z_before = z_t.clone()  # snapshot for trajectory
-            updated_state, reflect_metrics = self.reflect_fn(
-                self.task_desc,
-                z_t,
-                code_node,
-                self.journal,
+            should_reflect, reflect_trigger = self._should_reflect(z_t, feedback)
+            if should_reflect:
+                updated_state, reflect_metrics = self.reflect_fn(
+                    self.task_desc,
+                    z_t,
+                    code_node,
+                    self.journal,
+                )
+                metrics_to_log = dict(reflect_metrics or {})
+                metrics_to_log["trigger"] = reflect_trigger
+                code_node.operators_used.append("reflect")
+                code_node.operators_metrics.append(metrics_to_log)
+            else:
+                updated_state = self._lightweight_state_update(
+                    z_t,
+                    code_node,
+                    feedback,
+                    reflect_trigger,
+                )
+                code_node.operators_used.append("reflect_skipped")
+                code_node.operators_metrics.append(
+                    {"trigger": reflect_trigger, "mode": "lightweight"}
+                )
+
+            updated_state = self._apply_managed_decay(
+                z_before,
+                updated_state,
+                feedback,
+                reflect_trigger,
             )
-            code_node.operators_used.append("reflect")
-            code_node.operators_metrics.append(reflect_metrics)
 
             # 6b. Causal intervention (Exp 3)
             updated_state = self._apply_intervention(
@@ -841,6 +881,7 @@ class MCESES(Solver):
                 source_node_step=code_node.step,
                 depth=leaf_cs.depth + 1,
             )
+            child_cs.explore_count = 1
             leaf_cs.children.append(child_cs)
 
             # 7. Track metrics for multi-dimensional backprop
@@ -849,9 +890,10 @@ class MCESES(Solver):
                 valid_count += 1
                 child_metric = code_node.metric.value
                 child_cs.node_value = child_metric
-                child_cs.explore_count = 1
                 if best_child_metric is None or self._is_better(child_metric, best_child_metric):
                     best_child_metric = child_metric
+            else:
+                child_cs.node_value = self._buggy_child_value()
 
             # Log
             self._log_cs_expansion(k, leaf_cs, child_cs, code_node)
@@ -906,7 +948,16 @@ class MCESES(Solver):
         finally:
             self.cognitive_state = saved
 
-    def _cs_debug_cycle(self, state, task, buggy_node: Node) -> Tuple:
+    def _debug_from_state(self, z_t: CognitiveState, parent_node: Node) -> Node:
+        """Debug code using a specific branch-local cognitive state."""
+        saved = self.cognitive_state
+        self.cognitive_state = z_t
+        try:
+            return self._debug(parent_node)
+        finally:
+            self.cognitive_state = saved
+
+    def _cs_debug_cycle(self, state, task, buggy_node: Node, z_t: CognitiveState) -> Tuple:
         """Bounded debug cycle for a buggy code node during CS expansion."""
         debug_start = time.monotonic()
         current_node = buggy_node
@@ -919,7 +970,7 @@ class MCESES(Solver):
             if current_node.debug_depth >= self.cfg.max_debug_depth:
                 break
 
-            debug_node = self._debug(current_node)
+            debug_node = self._debug_from_state(z_t, current_node)
             state, eval_result = task.step_task(state, extract_code(debug_node.code))
             self.parse_eval_result(node=debug_node, eval_result=eval_result)
             self.journal.append(debug_node)
@@ -980,6 +1031,192 @@ class MCESES(Solver):
             queue.extend(node.children)
         self.cognitive_state = best_node.cognitive_state
 
+    def _get_branch_anchor_node(self, source_step: Optional[int]) -> Optional[Node]:
+        """Resolve the Journal node that anchors the current branch."""
+        if source_step is None:
+            return None
+        if source_step < 0 or source_step >= len(self.journal.nodes):
+            return None
+        anchor = self.journal.nodes[source_step]
+        if anchor.is_buggy:
+            return None
+        return anchor
+
+    def _buggy_child_value(self) -> float:
+        """Return a pessimistic value for a visited-but-buggy child."""
+        hi = self.state.global_max_q_val
+        lo = self.state.global_min_q_val
+        if hi <= lo:
+            return 1e8 if self.lower_is_better else -1e8
+        margin = 0.05 * abs(hi - lo) + 1.0
+        return (hi + margin) if self.lower_is_better else (lo - margin)
+
+    def _adaptive_num_children(self, z_t: CognitiveState) -> int:
+        """Adapt branching factor to branch confidence."""
+        if not (self.cfg.managed_evolution and self.cfg.adaptive_children):
+            return self.cfg.num_children
+
+        if z_t.confidence < self.cfg.low_conf_threshold:
+            target = self.cfg.low_conf_children
+        elif z_t.confidence >= self.cfg.high_conf_threshold:
+            target = self.cfg.high_conf_children
+        else:
+            target = self.cfg.mid_conf_children
+
+        return max(1, min(self.cfg.num_children, target))
+
+    def _recent_bug_streak(self, z_t: CognitiveState, current_feedback: Optional[Feedback] = None) -> int:
+        """Count consecutive buggy attempts for the current branch."""
+        streak = 0
+
+        if current_feedback is not None:
+            if not current_feedback.is_buggy:
+                return 0
+            streak += 1
+
+        for attempt in reversed(z_t.attempt_summaries):
+            if attempt.is_buggy:
+                streak += 1
+            else:
+                break
+
+        return streak
+
+    def _recent_valid_metrics(self, z_t: CognitiveState) -> List[float]:
+        """Return valid historical metrics for the current branch."""
+        return [
+            attempt.metric
+            for attempt in z_t.attempt_summaries
+            if not attempt.is_buggy and attempt.metric is not None
+        ]
+
+    def _is_plateau(self, z_t: CognitiveState, current_metric: Optional[float]) -> bool:
+        """Detect whether the branch has plateaued over the recent valid attempts."""
+        if current_metric is None:
+            return False
+
+        metrics = self._recent_valid_metrics(z_t)
+        metrics.append(current_metric)
+        window = metrics[-self.cfg.plateau_window :]
+        if len(window) < self.cfg.plateau_window:
+            return False
+
+        best_so_far = window[0]
+        for metric in window[1:]:
+            if self._is_better(metric, best_so_far):
+                return False
+        return True
+
+    def _get_reflection_trigger(self, z_t: CognitiveState, feedback: Feedback) -> str:
+        """Classify whether the current step contains enough new information to reflect."""
+        if z_t.evolution_step == 0 or not z_t.attempt_summaries:
+            return "bootstrap"
+
+        previous_metrics = self._recent_valid_metrics(z_t)
+        if not feedback.is_buggy and not previous_metrics:
+            return "first_success"
+
+        if feedback.is_buggy and feedback.error_category and feedback.error_category != "none":
+            if feedback.error_category not in self._prev_error_categories:
+                return "new_error"
+
+        if feedback.metric is not None and previous_metrics:
+            prev_metric = previous_metrics[-1]
+            denom = max(abs(prev_metric), 1e-8)
+            rel_change = abs(feedback.metric - prev_metric) / denom
+            if rel_change > self.cfg.score_jump_threshold:
+                return "score_jump"
+
+        if self._recent_bug_streak(z_t, feedback) >= self.cfg.bug_streak_window:
+            return "bug_streak"
+
+        if self._is_plateau(z_t, feedback.metric):
+            return "plateau"
+
+        return "routine"
+
+    def _should_reflect(self, z_t: CognitiveState, feedback: Feedback) -> Tuple[bool, str]:
+        """Decide whether to spend an LLM call on reflect_op for this child."""
+        if not self.cfg.managed_evolution:
+            return self.cfg.reflect_after_every_step, "always"
+
+        if not self.cfg.triggered_reflection:
+            return self.cfg.reflect_after_every_step, "always"
+
+        trigger = self._get_reflection_trigger(z_t, feedback)
+        if trigger != "routine":
+            return True, trigger
+        return self.cfg.reflect_on_routine, trigger
+
+    def _clamp_confidence(self, value: float) -> float:
+        return max(0.0, min(1.0, value))
+
+    def _lightweight_state_update(
+        self,
+        z_t: CognitiveState,
+        code_node: Node,
+        feedback: Feedback,
+        trigger: str,
+    ) -> CognitiveState:
+        """Advance state without an LLM call when the step contains little new information."""
+        updated = z_t.clone()
+        updated.evolution_step += 1
+
+        if feedback.is_buggy:
+            updated.confidence = self._clamp_confidence(updated.confidence - 0.05)
+            if feedback.error_pattern and feedback.error_pattern not in updated.learned_patterns:
+                updated.learned_patterns.append(feedback.error_pattern)
+            insight = feedback.error_pattern or f"buggy step ({feedback.error_category or 'unknown error'})"
+        else:
+            if feedback.trend == "improving":
+                updated.confidence = self._clamp_confidence(updated.confidence + 0.05)
+            elif feedback.trend == "degrading":
+                updated.confidence = self._clamp_confidence(updated.confidence - 0.05)
+            else:
+                updated.confidence = self._clamp_confidence(updated.confidence + 0.01)
+            insight = f"{feedback.trend} metric ({trigger})"
+
+        updated.add_attempt(
+            step=z_t.evolution_step,
+            approach=code_node.plan or "(unknown)",
+            metric=feedback.metric,
+            is_buggy=feedback.is_buggy,
+            key_insight=insight,
+            max_history=self.cfg.max_state_history,
+        )
+
+        return updated
+
+    def _apply_managed_decay(
+        self,
+        z_before: CognitiveState,
+        z_after: CognitiveState,
+        feedback: Feedback,
+        trigger: str,
+    ) -> CognitiveState:
+        """Apply conservative decay so unhealthy branches let go earlier."""
+        if not self.cfg.managed_evolution:
+            return z_after
+
+        updated = z_after.clone()
+        bug_streak = self._recent_bug_streak(z_before, feedback)
+
+        if self.cfg.hard_reset_on_bug_streak and bug_streak >= self.cfg.bug_streak_window:
+            updated.confidence = 0.1
+            updated.preferred_directions = []
+            if len(updated.hypotheses) > 2:
+                updated.hypotheses = updated.hypotheses[:2]
+            return updated
+
+        if self.cfg.state_decay_on_plateau and trigger == "plateau":
+            updated.confidence = self._clamp_confidence(
+                updated.confidence * (1.0 - self.cfg.plateau_decay_rate)
+            )
+            if updated.preferred_directions:
+                updated.preferred_directions = updated.preferred_directions[:-1]
+
+        return updated
+
     def _log_cs_expansion(
         self,
         child_idx: int,
@@ -1017,6 +1254,7 @@ class MCESES(Solver):
         z_t: CognitiveState,
         focus_direction: Optional[str] = None,
         cross_branch_insights: Optional[Dict] = None,
+        branch_source_step: Optional[int] = None,
     ) -> Node:
         """Select draft vs improve based on z_t.confidence and journal state.
 
@@ -1031,20 +1269,64 @@ class MCESES(Solver):
         if len(self.journal.draft_nodes) < self.cfg.num_drafts:
             return self._draft_from_state(z_t, focus_direction, cross_branch_insights)
 
-        # Use confidence to decide: low → draft (explore), high → improve (exploit)
-        best_node = self.journal.get_best_node()
-        if z_t.confidence >= 0.4 and best_node is not None and not best_node.is_buggy:
+        # Use branch-local anchor for improve. If this branch has not yet produced
+        # a valid artifact to refine, fall back to draft instead of improving a
+        # global best node from another branch.
+        anchor_node = self._get_branch_anchor_node(branch_source_step)
+        candidate_direction = focus_direction
+        if (
+            self.cfg.state_guided_policy
+            and candidate_direction is not None
+            and candidate_direction in z_t.avoided_directions
+        ):
+            candidate_direction = None
+
+        if self.cfg.state_guided_policy:
+            if anchor_node is None:
+                self.logger.info(
+                    f"Strategy: DRAFT (no branch-local anchor, confidence={z_t.confidence:.2f})"
+                )
+                return self._draft_from_state(z_t, candidate_direction, cross_branch_insights)
+
+            if z_t.confidence < self.cfg.low_conf_threshold:
+                self.logger.info(
+                    f"Strategy: DRAFT (low confidence={z_t.confidence:.2f} < {self.cfg.low_conf_threshold:.2f})"
+                )
+                return self._draft_from_state(z_t, candidate_direction, cross_branch_insights)
+
+            if candidate_direction is not None and z_t.confidence < self.cfg.high_conf_threshold:
+                self.logger.info(
+                    f"Strategy: DRAFT (pursuing focus_direction with medium confidence={z_t.confidence:.2f})"
+                )
+                return self._draft_from_state(z_t, candidate_direction, cross_branch_insights)
+
+            if self.cfg.avoid_dead_end_improve and anchor_node.plan:
+                anchor_plan = anchor_node.plan.lower()
+                if any(
+                    dead_end.lower() in anchor_plan
+                    for dead_end in z_t.avoided_directions
+                    if dead_end
+                ):
+                    self.logger.info(
+                        "Strategy: DRAFT (branch anchor overlaps an avoided direction)"
+                    )
+                    return self._draft_from_state(z_t, candidate_direction, cross_branch_insights)
+
+        if z_t.confidence >= 0.4 and anchor_node is not None:
             self.logger.info(
-                f"Strategy: IMPROVE (confidence={z_t.confidence:.2f} >= 0.4)"
+                f"Strategy: IMPROVE (confidence={z_t.confidence:.2f} >= 0.4, "
+                f"branch_source_step={branch_source_step})"
             )
             return self._improve_from_state(
-                z_t, best_node, focus_direction, cross_branch_insights
+                z_t, anchor_node, candidate_direction, cross_branch_insights
             )
         else:
             self.logger.info(
-                f"Strategy: DRAFT (confidence={z_t.confidence:.2f} < 0.4)"
+                f"Strategy: DRAFT (confidence={z_t.confidence:.2f}, "
+                f"branch_source_step={branch_source_step}, "
+                f"anchor_valid={anchor_node is not None})"
             )
-            return self._draft_from_state(z_t, focus_direction, cross_branch_insights)
+            return self._draft_from_state(z_t, candidate_direction, cross_branch_insights)
 
     # ------------------------------------------------------------------
     # MC-ESES: expansion diversity (P1)

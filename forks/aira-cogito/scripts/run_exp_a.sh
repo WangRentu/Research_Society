@@ -105,7 +105,7 @@ get_scramble_source() {
     local source_idx=$(( (task_idx + 5) % 10 ))
     local source_task="${TASKS[$source_idx]}"
     # 从 NAT seed 1 的输出中取
-    echo "outputs/${EXP_ID}/nat/${source_task}/seed_1/cognitive_state.json"
+    echo "outputs/${EXP_ID}/nat/${source_task}/seed_1/checkpoint/cognitive_state.json"
 }
 
 # ---- 主逻辑 ----

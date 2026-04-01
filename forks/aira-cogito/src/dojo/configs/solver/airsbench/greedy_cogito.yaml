@@ -31,3 +31,15 @@ save_trajectory: true
 intervention_mode: natural
 intervention_freeze_step: 5
 scramble_source_path: ""
+
+# --- Managed Evolution (NAT+) ---
+managed_evolution: false
+triggered_reflection: true
+reflect_on_routine: false
+plateau_window: 3
+bug_streak_window: 3
+score_jump_threshold: 0.05
+state_decay_on_plateau: true
+plateau_decay_rate: 0.3
+hard_reset_on_bug_streak: true
+max_state_history: 50

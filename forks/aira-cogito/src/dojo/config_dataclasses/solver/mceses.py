@@ -44,6 +44,21 @@ class MCESESSolverConfig(SolverConfig):
         metadata={"description": "Run reflect_op after every step to update cognitive state."},
     )
 
+    managed_evolution: bool = field(
+        default=True,
+        metadata={"description": "Enable managed cognitive-state evolution heuristics."},
+    )
+
+    triggered_reflection: bool = field(
+        default=True,
+        metadata={"description": "Only call reflect_op on informative events."},
+    )
+
+    reflect_on_routine: bool = field(
+        default=False,
+        metadata={"description": "Also reflect on routine steps when triggered_reflection is enabled."},
+    )
+
     max_state_history: int = field(
         default=50,
         metadata={"description": "Max attempt summaries to keep in cognitive state."},
@@ -85,6 +100,65 @@ class MCESESSolverConfig(SolverConfig):
     diverse_expansion: bool = field(
         default=True,
         metadata={"description": "Assign different preferred_directions to each expansion child."},
+    )
+
+    adaptive_children: bool = field(
+        default=True,
+        metadata={"description": "Adapt branching factor to branch confidence."},
+    )
+    low_conf_children: int = field(
+        default=5,
+        metadata={"description": "Children to expand when confidence is low."},
+    )
+    mid_conf_children: int = field(
+        default=3,
+        metadata={"description": "Children to expand when confidence is medium."},
+    )
+    high_conf_children: int = field(
+        default=1,
+        metadata={"description": "Children to expand when confidence is high."},
+    )
+    low_conf_threshold: float = field(
+        default=0.3,
+        metadata={"description": "Confidence threshold below which the search stays exploratory."},
+    )
+    high_conf_threshold: float = field(
+        default=0.7,
+        metadata={"description": "Confidence threshold above which branching becomes conservative."},
+    )
+
+    state_guided_policy: bool = field(
+        default=True,
+        metadata={"description": "Let branch-local cognitive state influence draft vs improve decisions."},
+    )
+    avoid_dead_end_improve: bool = field(
+        default=True,
+        metadata={"description": "Avoid improving a branch that is already marked as a dead end."},
+    )
+
+    plateau_window: int = field(
+        default=3,
+        metadata={"description": "Window size for plateau detection and managed decay."},
+    )
+    bug_streak_window: int = field(
+        default=3,
+        metadata={"description": "Consecutive buggy attempts needed to trigger a hard reset."},
+    )
+    score_jump_threshold: float = field(
+        default=0.05,
+        metadata={"description": "Relative metric change threshold for score-jump reflection triggers."},
+    )
+    state_decay_on_plateau: bool = field(
+        default=True,
+        metadata={"description": "Apply confidence decay after plateau events."},
+    )
+    plateau_decay_rate: float = field(
+        default=0.3,
+        metadata={"description": "Fraction of confidence removed on plateau."},
+    )
+    hard_reset_on_bug_streak: bool = field(
+        default=True,
+        metadata={"description": "Apply a stronger state reset after repeated buggy attempts."},
     )
 
     # --- Phase B: multi-dimensional backpropagation ---
@@ -148,10 +222,17 @@ class MCESESSolverConfig(SolverConfig):
     def validate(self) -> None:
         super().validate()
         if self.use_tree_search:
-            assert self.num_children >= 1, "num_children must be >= 1 for tree search"
+            assert self.num_children >= 1, "num_children must be >= 1"
             assert self.uct_c >= 0, "uct_c must be non-negative"
             w_sum = self.backprop_metric_weight + self.backprop_validity_weight + self.backprop_improvement_weight
             assert abs(w_sum - 1.0) < 0.01, f"backprop weights must sum to 1.0, got {w_sum}"
+        assert self.low_conf_children >= 1 and self.mid_conf_children >= 1 and self.high_conf_children >= 1, (
+            "adaptive child counts must all be >= 1"
+        )
+        assert 0.0 <= self.low_conf_threshold <= self.high_conf_threshold <= 1.0, (
+            "confidence thresholds must satisfy 0 <= low_conf_threshold <= high_conf_threshold <= 1"
+        )
+        assert 0.0 <= self.plateau_decay_rate <= 1.0, "plateau_decay_rate must be in [0, 1]"
         assert self.intervention_mode in ("natural", "ablated", "scrambled", "frozen"), (
             f"Unknown intervention_mode: {self.intervention_mode}"
         )
